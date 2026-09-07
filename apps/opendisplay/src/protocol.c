@@ -29,7 +29,7 @@ static int emitted(uint8_t value, void *arg) {
 static int stream(struct od_session *s, const uint8_t *b, size_t n) {
     if (s->compressed)
         return od_inflate_feed(&s->inflate, b, n, emitted, s);
-    if (n > s->total - s->written || epd_write(b, n))
+    if (s->written > s->total || n > (size_t)(s->total - s->written) || epd_write(b, n))
         return -1;
     s->written += n;
     return 0;

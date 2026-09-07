@@ -105,7 +105,7 @@ int od_store_begin(size_t n) {
     return 0;
 }
 int od_store_append(const uint8_t *p, size_t n) {
-    if (!staging || !n || n > expected - received) {
+    if (!staging || !n || received > expected || n > (size_t)(expected - received)) {
         od_store_abort();
         return -1;
     }
