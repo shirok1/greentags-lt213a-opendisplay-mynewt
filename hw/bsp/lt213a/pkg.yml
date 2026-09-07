@@ -1,0 +1,9 @@
+pkg.name: hw/bsp/lt213a
+pkg.type: bsp
+pkg.description: GreenTags LT213A nRF51822 128 KiB flash / 16 KiB RAM
+pkg.cflags:
+    - -DNRF51
+    - -DNRF51822_XXAB
+pkg.deps:
+    - "@apache-mynewt-core/hw/mcu/nordic/nrf51xxx"
+    - "@apache-mynewt-core/libc"

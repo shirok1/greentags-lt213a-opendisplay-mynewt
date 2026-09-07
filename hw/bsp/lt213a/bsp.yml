@@ -1,0 +1,12 @@
+bsp.name: GreenTags LT213A
+bsp.arch: cortex_m0
+bsp.compiler: "@apache-mynewt-core/compiler/arm-none-eabi-m0"
+bsp.linkerscript:
+    - hw/bsp/lt213a/memory.ld
+    - "@apache-mynewt-core/hw/mcu/nordic/nrf51xxx/nrf51.ld"
+bsp.flash_map:
+    areas:
+        FLASH_AREA_IMAGE_0:
+            device: 0
+            offset: 0
+            size: 118kB

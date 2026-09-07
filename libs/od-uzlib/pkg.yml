@@ -1,0 +1,6 @@
+pkg.name: libs/od-uzlib
+pkg.type: lib
+pkg.description: OpenDisplay streaming uzlib snapshot
+pkg.cflags:
+    - -DOPENDISPLAY_ZLIB_WINDOW_BITS=9
+    - -DOPENDISPLAY_ZLIB_USE_HEAP_WINDOW=0

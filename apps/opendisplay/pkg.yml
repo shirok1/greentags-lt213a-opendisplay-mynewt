@@ -1,0 +1,17 @@
+pkg.name: apps/opendisplay
+pkg.type: app
+pkg.description: OpenDisplay streaming peripheral for LT213A
+pkg.deps:
+    - libs/od-uzlib
+    - "@apache-mynewt-core/kernel/os"
+    - "@apache-mynewt-core/sys/sysinit"
+    - "@apache-mynewt-core/sys/console/stub"
+    - "@apache-mynewt-core/sys/stats/stub"
+    - "@apache-mynewt-nimble/nimble/host"
+    - "@apache-mynewt-nimble/nimble/host/services/gap"
+    - "@apache-mynewt-nimble/nimble/host/services/gatt"
+    - "@apache-mynewt-nimble/nimble/host/util"
+    - "@apache-mynewt-core/sys/log/stub"
+
+pkg.cflags:
+    - -fstack-usage

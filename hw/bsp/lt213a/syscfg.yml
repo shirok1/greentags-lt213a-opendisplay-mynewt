@@ -1,0 +1,21 @@
+syscfg.defs:
+    LT213A_LFRC_CALIBRATED:
+        value: 1
+    BSP_NRF51:
+        value: 1
+    TIMER_0:
+        value: 0
+    TIMER_1:
+        value: 0
+    TIMER_2:
+        value: 0
+    TIMER_3:
+        value: 1
+syscfg.vals:
+    MCU_TARGET: nRF51822_16K
+    MCU_COMMON_STARTUP: 1
+    MCU_LFCLK_SOURCE: LFRC
+    BLE_LL_SCA: 500
+    OS_CPUTIME_FREQ: 32768
+    OS_CPUTIME_TIMER_NUM: 3
+    BLE_LL_RFMGMT_ENABLE_TIME: 1500

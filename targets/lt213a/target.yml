@@ -1,0 +1,3 @@
+target.app: apps/opendisplay
+target.bsp: hw/bsp/lt213a
+target.build_profile: optimized
