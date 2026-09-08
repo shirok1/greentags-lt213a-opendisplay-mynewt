@@ -127,12 +127,12 @@ async def main():
 asyncio.run(main())
 ```
 
-固件已有与 Python `cryptography` 对照的加密测试；上述完整客户端的无线互通仍需上板确认。
+固件已有与 Python `cryptography` 对照的加密测试；py-opendisplay 明文无线互通与绘制已上板验证（py-opendisplay 7.16.0，版本 SHA 差异与连接窗口限制见[实板点亮与调试记录](docs/hardware-bringup.md)），加密连接互通仍需上板确认。
 配置默认不开启加密，通过标准 SecurityConfig 记录设置密钥后启用。没有密钥恢复按键，遗失密钥需 SWD 恢复配置区。
 
 ## SWD
 
-实板已验证：启动、BLE 同步与广播正常（快广播窗口），串口无输出（控制台为 stub，预期行为）。详细刷机流程、兼容芯片调试限制与已知问题见[实板点亮与调试记录](docs/hardware-bringup.md)。
+实板已验证：启动、BLE 同步与广播正常（快广播窗口），串口无输出（控制台为 stub，预期行为）；py-opendisplay 无线互通与绘制已打通（含压缩直写与刷新完成通知，前提与限制见调试记录）。详细刷机流程、兼容芯片调试限制与已知问题见[实板点亮与调试记录](docs/hardware-bringup.md)。
 
 连接 SWDIO、SWCLK、GND 和目标电压参考后，可用 J-Link Commander，设备 `nRF51822_xxAB`、SWD、1000 kHz：
 
@@ -149,7 +149,7 @@ q
 
 普通应用 HEX 不包含配置槽。没有 bootloader，`0051` 不能进入不存在的升级服务；若继续做 OTA，需要单独设计、实现并验证 bootloader/镜像更新布局。
 
-上板待验证：全刷、压缩、PIPE 重传、局刷残影、加密连接、Flash 擦除期间的无线稳定性、温度/VDD 采样和任务栈余量；慢广播期间的间歇性静默问题待解决（见调试记录）。
+上板待验证：PIPE 重传、局刷残影、加密连接、Flash 擦除期间的无线稳定性、温度/VDD 采样和任务栈余量。已知问题：慢广播期间的间歇性静默（连接只能在健康广播窗口建立，见调试记录）、`00 43` 版本响应无 SHA 与新版 py-opendisplay 的 interrogate 路径不兼容（绘制路径不受影响）。
 
 ## 依据
 

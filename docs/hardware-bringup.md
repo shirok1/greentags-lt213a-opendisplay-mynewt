@@ -59,8 +59,17 @@ openocd -f tools/openocd-lt213a.cfg -c "init" -c "reset halt" \
 
 `/dev/cu.usbmodem*` 无输出：控制台在本固件里是 stub，属预期行为，不是故障。
 
+## py-opendisplay 互通（已验证，带前提）
+
+2026-09-08 19:27 实测（py-opendisplay 7.16.0 + bleak 3.0.2，macOS）：连接、`interrogate()` 配置读取（含 MTU 分片）、zlib 压缩直写（205 分块）到收到 `00 73` 刷新完成通知，端到端 11 秒，面板参数正确协商为 104x212 MONO。结论：**协议链路与绘制的无线互通已打通**。
+
+两个前提：
+
+1. **版本响应差异**：py-opendisplay 7.16 要求 `00 43` 版本响应携带 SHA 哈希，本固件按 canonical protocol 2.2 返回空 SHA（`shaLength=0`），显式调用 `read_firmware_version()` 或 CLI 的 interrogate 路径会抛 `InvalidResponseError`。跳过版本读取后一切正常（`OpenDisplayDevice` 自动握手读的是 `00 40` 配置，不读版本）。彻底解决需在固件里把构建 SHA 编入 `00 43` 响应。
+2. **必须处于健康广播窗口**：间歇静默期间标签数分钟无广播包，连接无法建立（实测静默期 4 次连接尝试全部超时；健康窗口期 20 次尝试 17 次成功，耗时 1.3–34 秒）。连接建立后的传输稳定，205 分块 + 刷新通知一次通过。另复现：刷机/复位后的启动会卡 3–5 分钟才开始广播。
+
 ## 现场状态（收尾时）
 
-- 最终固件 = 原厂 BSP + os_time 修复，已于 2026-09-08 17:35 刷入并 `reset run`；
-- 收尾时实测：标签存活，广播可被扫描发现（RSSI −54 ～ −86），伴随间歇静默；
+- 最终固件 = 原厂 BSP + os_time 修复，已于 2026-09-08 19:09 重新刷入并验证 py-opendisplay 绘制；
+- 标签存活，健康窗口内广播与连接正常（RSSI −54 ～ −86），伴随间歇静默；
 - 原厂固件备份在 `stock-lt213a-backup.bin`，需要时可整片回刷。
