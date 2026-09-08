@@ -41,5 +41,6 @@ __pycache__/
 !.env.example
 *.pem
 *.key
+/stock-lt213a-backup.bin
 /.idea/
 /.vscode/

@@ -132,7 +132,9 @@ asyncio.run(main())
 
 ## SWD
 
-固件尚未完成实板验证。连接 SWDIO、SWCLK、GND 和目标电压参考后，可使用 J-Link Commander，设备 `nRF51822_xxAB`、SWD、1000 kHz：
+实板已验证：启动、BLE 同步与广播正常（快广播窗口），串口无输出（控制台为 stub，预期行为）。详细刷机流程、兼容芯片调试限制与已知问题见[实板点亮与调试记录](docs/hardware-bringup.md)。
+
+连接 SWDIO、SWCLK、GND 和目标电压参考后，可用 J-Link Commander，设备 `nRF51822_xxAB`、SWD、1000 kHz：
 
 ```text
 r
@@ -143,9 +145,11 @@ g
 q
 ```
 
+也可用任意 CMSIS-DAP 探头配 OpenOCD（配置见 `tools/openocd-lt213a.cfg`，首次刷机前先整片备份原厂固件）。
+
 普通应用 HEX 不包含配置槽。没有 bootloader，`0051` 不能进入不存在的升级服务；若继续做 OTA，需要单独设计、实现并验证 bootloader/镜像更新布局。
 
-上板应验证全刷、压缩、PIPE 重传、局刷残影、加密连接、Flash 擦除期间的无线稳定性、温度/VDD 采样和任务栈余量。
+上板待验证：全刷、压缩、PIPE 重传、局刷残影、加密连接、Flash 擦除期间的无线稳定性、温度/VDD 采样和任务栈余量；慢广播期间的间歇性静默问题待解决（见调试记录）。
 
 ## 依据
 
@@ -161,7 +165,7 @@ q
 - `libs/od-uzlib/`：固定版本的第三方流式解压器。
 - `targets/lt213a/`：唯一固件构建目标。
 - `tests/`、`tools/`：主机测试、依赖下载、构建和上传工具。
-- `docs/`：协议覆盖、省电策略与实板验证步骤。
+- `docs/`：协议覆盖、省电策略、实板点亮调试记录与实板验证步骤。
 
 `repos/`、`bin/`、虚拟环境和调试产物不纳入 Git。CI 在 Ubuntu 上执行主机测试、交叉编译和资源检查，并上传 ELF/HEX/BIN artifact；不自动烧录或发布 Release。CI 的 ARM GCC 来自 Ubuntu，尺寸可能与本机 GCC 15.3.1 不同，最终以该次构建输出为准。
 
