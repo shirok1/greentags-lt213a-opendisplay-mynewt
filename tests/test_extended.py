@@ -82,6 +82,22 @@ class ProtocolTests(unittest.TestCase):
             self.full(etag=1)
             start=b'\0\x76\0'+struct.pack('>IIHHHH',1,2,*rect)
             self.assertEqual(command(start),[bytes([255,0x76,err,0])])
+    def test_partial_end_stream_errors(self):
+        for zipped, payload, end in [
+            (False, b'\xaa', b'\0\x72\x02'),
+            (True, compressed(b'\xaa' * 4)[:-1], b'\0\x72\x02'),
+            (False, b'\xaa' * 4, b'\0\x72\x03'),
+            (False, b'\xaa' * 4, b'\0\x72'),
+        ]:
+            with self.subTest(zipped=zipped, end=end, size=len(payload)):
+                self.full(etag=1)
+                start=b'\0\x76'+bytes([zipped])+struct.pack('>IIHHHH',1,2,0,0,8,2)
+                self.assertEqual(command(start+payload),[b'\0\x76'])
+                refreshes=h.test_refreshes()
+                self.assertEqual(command(end),[b'\xff\x72\x06\0'])
+                self.assertEqual(h.test_refreshes(),refreshes)
+                self.assertEqual(command(b'\0\x71x'),[b'\xff\x71'])
+                self.assertEqual(command(start),[b'\xff\x76\x01\0'])
     def pipe(self,data,zipped=False,chunk=18):
         header=b'\0\x80'+struct.pack('<BBBBHI',1,int(zipped),2,2,244,len(data))
         ack=command(header)[0];self.assertEqual(ack[:5],b'\0\x80\x01\x02\x02')

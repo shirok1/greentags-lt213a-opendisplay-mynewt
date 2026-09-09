@@ -407,6 +407,11 @@ void od_command(struct od_session *s, const uint8_t *b, size_t len, const uint8_
         if (!s->active || end_pipe != s->pipe || !valid_length ||
             (len > 2 && b[2] > (s->partial ? 2 : 1)) || s->written != s->total ||
             (s->compressed && !od_inflate_complete(&s->inflate)) || s->pending.used) {
+            if (!end_pipe && s->active && !s->pipe && s->partial) {
+                r[2] = 6;
+                r[3] = 0;
+                n = 4;
+            }
             od_abort(s);
             break;
         }
