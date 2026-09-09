@@ -98,7 +98,9 @@ int epd_write(const uint8_t *buf, size_t len) {
 }
 int epd_refresh(void) {
     cmd(0x12);
-    delay_ms(1); /* Datasheet/example requires at least 200 us. */
+    /* Datasheet requires 200 us before polling; the supplied Good Display
+     * examples wait 100 ms here before checking BUSY. Match the examples. */
+    delay_ms(100);
     return ready();
 }
 int epd_off(void) {
