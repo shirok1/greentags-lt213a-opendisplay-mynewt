@@ -233,14 +233,6 @@ void od_command(struct od_session *s, const uint8_t *b, size_t len, const uint8_
         memcpy(r + 2, msd, 16);
         n = 18;
         break;
-    case 0x50:
-        /* The transport calls od_secure_command(), which implements auth. */
-        if ((len == 3 && b[2] == 0) || len == 34) {
-            r[0] = 0;
-            r[2] = 3;
-            n = 3;
-        }
-        break;
     case 0x51: /* No Nordic/MCUboot bootloader or OTA slot exists. */
         break;
     case 0x52:
