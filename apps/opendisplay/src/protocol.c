@@ -1,4 +1,5 @@
 #include "protocol.h"
+#include "build_version.h"
 #include "platform.h"
 #include "storage.h"
 #include <string.h>
@@ -221,9 +222,10 @@ void od_command(struct od_session *s, const uint8_t *b, size_t len, const uint8_
         r[0] = 0;
         r[2] = 0;
         r[3] = 2;
-        r[4] = 0;
-        r[5] = 0;
-        n = 6;
+        r[4] = sizeof OD_BUILD_SHA - 1;
+        memcpy(r + 5, OD_BUILD_SHA, sizeof OD_BUILD_SHA - 1);
+        r[5 + sizeof OD_BUILD_SHA - 1] = 0; /* Patch follows the SHA. */
+        n = 6 + sizeof OD_BUILD_SHA - 1;
         break;
     case 0x44:
         if (len != 2)

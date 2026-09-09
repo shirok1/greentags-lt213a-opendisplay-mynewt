@@ -4,6 +4,7 @@ import binascii
 import os
 import random
 import struct
+import subprocess
 import unittest
 import zlib
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -42,6 +43,11 @@ def compressed(data):
 
 class ProtocolTests(unittest.TestCase):
     def setUp(self): h.test_reset()
+    def test_version_contains_build_sha_at_minimum_mtu(self):
+        sha = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip()[:12]
+        replies = command(b'\0\x43', 23)
+        self.assertEqual(replies, [b'\0\x43\0\x02' + bytes([len(sha)]) + sha + b'\0'])
+        self.assertLessEqual(len(replies[0]), 20)
     def full(self, data=b'\xff'*2756, zipped=False, etag=None):
         stream=compressed(data) if zipped else data
         start=b'\0\x70'+(struct.pack('<I',2756)+stream[:7] if zipped else b'')
@@ -177,8 +183,10 @@ class CryptoTests(unittest.TestCase):
         plain=AESCCM(self.session,tag_length=12).decrypt(r[5:18],r[18:],r[:2])
         self.assertEqual(plain[0],len(plain)-1);return r[:2]+plain[1:]
     def test_gate_handshake_and_envelope(self):
+        version=command(b'\0\x43',23)
         self.assertEqual(command(b'\0\x70'),[b'\xfe\x70'])
         self.auth()
+        self.assertEqual(command(b'\0\x43',23),version)
         self.assertEqual(self.decrypt(command(self.envelope(0x70))[0]),b'\0\x70')
         r=command(self.envelope(0x40));data=b''
         for i,p in enumerate(r):

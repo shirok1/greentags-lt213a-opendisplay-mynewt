@@ -59,6 +59,8 @@ python -m pip install -r requirements-test.txt
 
 `bootstrap.sh` 下载固定标签依赖并应用本板的 LFRC 配置补丁，不要求下载完整依赖 Git 历史；已有 `repos/` 子目录会保留。也可用 `newt upgrade` 获取依赖，再通过 `tools/build.sh` 应用补丁。只运行主机测试不需要 Newt 或 ARM GCC，但仍需先下载依赖。
 
+构建和测试脚本从 Git HEAD 生成版本头（12 位 commit SHA，不包含未提交改动标记；不纳入 Git）。`00 43` 返回版本、SHA 和 patch，18 字节响应可用于 ATT MTU 23。
+
 构建脚本生成配置记录、编译、检查 ELF 尺寸并导出：
 
 ```text
@@ -149,7 +151,7 @@ q
 
 普通应用 HEX 不包含配置槽。没有 bootloader，`0051` 不能进入不存在的升级服务；若继续做 OTA，需要单独设计、实现并验证 bootloader/镜像更新布局。
 
-上板待验证：PIPE 重传、局刷残影、加密连接、Flash 擦除期间的无线稳定性、温度/VDD 采样和任务栈余量。已知问题：慢广播期间的间歇性静默（连接只能在健康广播窗口建立，见调试记录）、`00 43` 版本响应无 SHA 与新版 py-opendisplay 的 interrogate 路径不兼容（绘制路径不受影响）。
+上板待验证：PIPE 重传、局刷残影、加密连接、Flash 擦除期间的无线稳定性、温度/VDD 采样和任务栈余量。已知问题：慢广播期间的间歇性静默（连接只能在健康广播窗口建立，见调试记录）。
 
 ## 依据
 

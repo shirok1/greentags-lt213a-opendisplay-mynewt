@@ -3,6 +3,7 @@ set -eu
 cd "$(dirname "$0")/.."
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
+python3 tools/generate_version.py
 python3 - <<'PYCHECK'
 from pathlib import Path
 import sys

@@ -44,3 +44,4 @@ __pycache__/
 /stock-lt213a-backup.bin
 /.idea/
 /.vscode/
+/apps/opendisplay/src/build_version.h
