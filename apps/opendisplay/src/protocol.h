@@ -17,7 +17,7 @@ struct od_session {
         uint8_t data[241];
         uint8_t len, seq;
         bool used;
-    } reorder[1];
+    } pending;
     struct od_inflate inflate;
 };
 typedef int (*od_send_fn)(const uint8_t *, size_t, void *);

@@ -17,7 +17,7 @@ void od_abort(struct od_session *s) {
     }
     s->active = false;
     s->written = 0;
-    memset(s->reorder, 0, sizeof s->reorder);
+    memset(&s->pending, 0, sizeof s->pending);
 }
 static int emitted(uint8_t value, void *arg) {
     struct od_session *s = arg;
@@ -104,15 +104,15 @@ static void pipe_data(struct od_session *s, const uint8_t *b, size_t n, od_send_
             goto fail;
         }
         ++s->next;
-    } else if (s->reorder[0].used) {
-        if (s->reorder[0].seq != seq || s->reorder[0].len != n - 3 ||
-            memcmp(s->reorder[0].data, b + 3, n - 3))
+    } else if (s->pending.used) {
+        if (s->pending.seq != seq || s->pending.len != n - 3 ||
+            memcmp(s->pending.data, b + 3, n - 3))
             goto fail;
     } else {
-        memcpy(s->reorder[0].data, b + 3, n - 3);
-        s->reorder[0].len = n - 3;
-        s->reorder[0].seq = seq;
-        s->reorder[0].used = true;
+        memcpy(s->pending.data, b + 3, n - 3);
+        s->pending.len = n - 3;
+        s->pending.seq = seq;
+        s->pending.used = true;
     }
     if (!s->seen) {
         s->highest = seq;
@@ -128,13 +128,12 @@ static void pipe_data(struct od_session *s, const uint8_t *b, size_t n, od_send_
         } else if (d < 0 && d >= -32)
             s->mask |= 1u << (-d - 1);
     }
-    while (s->reorder[0].used && s->reorder[0].seq == s->next) {
-        unsigned i = 0;
-        if (stream(s, s->reorder[i].data, s->reorder[i].len)) {
+    if (s->pending.used && s->pending.seq == s->next) {
+        if (stream(s, s->pending.data, s->pending.len)) {
             error = s->compressed ? 2 : 3;
             goto fail;
         }
-        s->reorder[i].used = false;
+        s->pending.used = false;
         ++s->next;
     }
     if (++s->since_ack >= s->ack_every || s->written == s->total)
@@ -405,7 +404,7 @@ void od_command(struct od_session *s, const uint8_t *b, size_t len, const uint8_
         bool valid_length = len == 3 || len == 7 || (end_pipe && s->partial && len == 2);
         if (!s->active || end_pipe != s->pipe || !valid_length ||
             (len > 2 && b[2] > (s->partial ? 2 : 1)) || s->written != s->total ||
-            (s->compressed && !od_inflate_complete(&s->inflate)) || s->reorder[0].used) {
+            (s->compressed && !od_inflate_complete(&s->inflate)) || s->pending.used) {
             od_abort(s);
             break;
         }
