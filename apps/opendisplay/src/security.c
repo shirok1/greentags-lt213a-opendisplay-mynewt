@@ -53,11 +53,12 @@ static __attribute__((noinline)) void authenticate(const uint8_t *b, size_t n, u
         attempts = 0;
         attempts_at = now;
     }
-    if (attempts >= 10) {
-        response[2] = 4;
-        goto done;
-    }
     if (n == 3 && b[2] == 0) {
+        /* Limit new challenges, not the proof for an accepted challenge. */
+        if (attempts >= 10) {
+            response[2] = 4;
+            goto done;
+        }
         ++attempts;
         od_security_reset();
         if (mtu < 37 || od_random(auth.challenge, 16))

@@ -213,6 +213,15 @@ class CryptoTests(unittest.TestCase):
         command(b'\0\x50\0')
         self.assertEqual(command(b'\0\x50'+b'X'*32),[b'\0\x50\x01'])
         self.assertEqual(command(b'\0\x50'+b'X'*32),[b'\0\x50\xff'])
+    def test_tenth_challenge_can_complete(self):
+        for _ in range(9):
+            self.auth()
+            h.test_reconnect()
+        self.auth()  # The tenth proof must still be accepted.
+        self.assertEqual(command(b'\0\x50\0'),[b'\0\x50\x04'])
+        self.assertEqual(self.decrypt(command(self.envelope(0x70))[0]),b'\0\x70')
+        h.test_time(60000)
+        self.auth()
     def test_config_change_ack_uses_old_session_then_reauth(self):
         self.auth();new=bytearray(self.config);new[29]=8;new=crc_config(new)
         reply=command(self.envelope(0x41,new))[0]
