@@ -249,8 +249,8 @@ static void advertise(void) {
         goto retry;
     p.conn_mode = BLE_GAP_CONN_MODE_UND;
     p.disc_mode = BLE_GAP_DISC_MODE_GEN;
-    p.itvl_min = slow_advertising ? 4800 : 1600;
-    p.itvl_max = slow_advertising ? 8000 : 1920; /* slow: 3--5 s */
+    p.itvl_min = slow_advertising ? 1600 : 160;
+    p.itvl_max = slow_advertising ? 1920 : 240; /* fast: 100--150 ms; slow: 1--1.2 s */
     rc = ble_gap_adv_start(address_type, NULL, BLE_HS_FOREVER, &p, gap_event, NULL);
 retry:
     if (rc)
