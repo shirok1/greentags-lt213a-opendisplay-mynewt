@@ -40,3 +40,7 @@ PYGPIO
 cc -std=c99 -Wall -Wextra -Werror -Wno-unused-parameter -fsanitize=address,undefined \
     -I"$out" -Itests/fakes -Ilibs/od-uzlib/include -Iapps/opendisplay/src tests/test_epd.c apps/opendisplay/src/epd.c -o "$out/epd"
 "$out/epd"
+cc -std=c99 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    -Itests/fakes -Irepos/nordic-nrfx/mdk -Iapps/opendisplay/src \
+    tests/test_telemetry.c apps/opendisplay/src/telemetry.c -o "$out/telemetry"
+"$out/telemetry"

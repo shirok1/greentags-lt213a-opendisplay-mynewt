@@ -50,6 +50,7 @@ static struct {
 } tx;
 
 static void advertise(void);
+static int set_advertisement_data(void);
 static int gap_event(struct ble_gap_event *event, void *arg);
 
 static void notify(struct os_event *ev) {
@@ -79,16 +80,32 @@ static int send_response(const uint8_t *data, size_t len, void *arg) {
 }
 static void command_done(struct os_event *ev) {
     struct command *c = ev->ev_arg;
+    bool telemetry = c->len == 0;
+    if (telemetry) {
+        if (c->mtu) { /* Internal job result: a complete, successful sample. */
+            memcpy(msd, c->bytes, sizeof msd);
+            msd[15] = (msd[15] & ~8u) | (od_security_enabled() ? 8 : 0);
+            if (ble_gap_adv_active())
+                set_advertisement_data();
+        }
+        memset(c->bytes, 0, sizeof c->bytes);
+    }
     c->used = false;
-    if (connection == BLE_HS_CONN_HANDLE_NONE && ble_gap_adv_active()) {
+    if (!telemetry && connection == BLE_HS_CONN_HANDLE_NONE && ble_gap_adv_active()) {
         ble_gap_adv_stop();
         advertise();
     }
-    if (c->generation == generation && connection != BLE_HS_CONN_HANDLE_NONE)
+    if (!telemetry && c->generation == generation && connection != BLE_HS_CONN_HANDLE_NONE)
         os_callout_reset(&idle_timeout, 30 * OS_TICKS_PER_SEC);
 }
 static void command_work(struct os_event *ev) {
     struct command *c = ev->ev_arg;
+    if (c->len == 0) {
+        /* Reuse an idle command slot: no extra timer, task, or RAM buffer. */
+        c->mtu = c->generation == generation && !od_read_msd(c->bytes);
+        os_eventq_put(os_eventq_dflt_get(), &c->done);
+        return;
+    }
     if (c->generation == generation) {
         if (c->len >= 2 && c->bytes[0] == 0 && c->bytes[1] == 0x44) {
             uint8_t sample[16];
@@ -177,10 +194,25 @@ static const struct ble_gatt_svc_def services[] = {
               .val_handle = &value_handle},
              {0}}},
     {0}};
+static void sample_telemetry(void) {
+    if (connection != BLE_HS_CONN_HANDLE_NONE || commands[0].used || commands[1].used)
+        return;
+    /* Zero length cannot arrive through GATT; it identifies an internal job. */
+    struct command *c = &commands[0];
+    c->len = c->mtu = 0;
+    c->generation = generation;
+    c->used = true;
+    os_eventq_put(&display_queue, &c->work);
+}
 static void advertise_retry(struct os_event *ev) {
     if (connection != BLE_HS_CONN_HANDLE_NONE)
         return;
     if (ble_gap_adv_active()) {
+        sample_telemetry();
+        if (slow_advertising) {
+            os_callout_reset(&adv_retry, 300 * OS_TICKS_PER_SEC);
+            return;
+        }
         slow_advertising = true;
         if (ble_gap_adv_stop()) {
             os_callout_reset(&adv_retry, OS_TICKS_PER_SEC);
@@ -189,11 +221,8 @@ static void advertise_retry(struct os_event *ev) {
     }
     advertise();
 }
-static void advertise(void) {
+static int set_advertisement_data(void) {
     struct ble_hs_adv_fields f = {0};
-    struct ble_gap_adv_params p = {0};
-    if (connection != BLE_HS_CONN_HANDLE_NONE || !ble_hs_synced())
-        return;
     /* 3 flags + 18 MSD + 10 name = 31 bytes. UUID goes in scan response. */
     f.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     f.name = (uint8_t *)name;
@@ -201,7 +230,14 @@ static void advertise(void) {
     f.name_is_complete = 1;
     f.mfg_data = msd;
     f.mfg_data_len = sizeof msd;
-    int rc = ble_gap_adv_set_fields(&f);
+    return ble_gap_adv_set_fields(&f);
+}
+static void advertise(void) {
+    struct ble_hs_adv_fields f = {0};
+    struct ble_gap_adv_params p = {0};
+    if (connection != BLE_HS_CONN_HANDLE_NONE || !ble_hs_synced())
+        return;
+    int rc = set_advertisement_data();
     if (rc)
         goto retry;
     memset(&f, 0, sizeof f);
@@ -221,6 +257,8 @@ retry:
         os_callout_reset(&adv_retry, OS_TICKS_PER_SEC);
     else if (!slow_advertising)
         os_callout_reset(&adv_retry, 30 * OS_TICKS_PER_SEC);
+    else
+        os_callout_reset(&adv_retry, 300 * OS_TICKS_PER_SEC);
 }
 static void reset_link(void) {
     ++generation;
@@ -280,6 +318,7 @@ static void on_sync(void) {
     }
     rc = ble_svc_gap_device_name_set(name);
     assert(rc == 0);
+    sample_telemetry();
     advertise();
 }
 int mynewt_main(int argc, char **argv) {

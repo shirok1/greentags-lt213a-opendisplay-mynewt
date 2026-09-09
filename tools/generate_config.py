@@ -14,7 +14,9 @@ def config_bytes():
     system[4:7] = b"\xff\xff\xff"  # No controllable power pins
     manufacturer = bytearray(22)  # IDs unknown: do not claim an assigned ID
     power = bytearray(30)
+    power[0] = 1  # Battery powered
     power[8:10] = b'\xff\xff'  # No battery sense GPIO configured
+    power[11] = 4  # CR2450: non-rechargeable lithium primary
     panel = bytearray(46)
     panel[1] = 1  # e-paper
     panel[4:8] = bytes([104, 0, 212, 0])
