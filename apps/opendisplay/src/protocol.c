@@ -20,6 +20,18 @@ void od_abort(struct od_session *s) {
     s->written = 0;
     memset(&s->pending, 0, sizeof s->pending);
 }
+uint32_t od_transfer_remaining_ms(const struct od_session *s) {
+    if (!s->active)
+        return UINT32_MAX;
+    uint32_t elapsed = od_millis() - s->started_at;
+    return elapsed >= OD_TRANSFER_TIMEOUT_MS ? 0 : OD_TRANSFER_TIMEOUT_MS - elapsed;
+}
+bool od_expire_transfer(struct od_session *s) {
+    if (od_transfer_remaining_ms(s) != 0)
+        return false;
+    od_abort(s);
+    return true;
+}
 static int emitted(uint8_t value, void *arg) {
     struct od_session *s = arg;
     if (s->written >= s->total || epd_write(&value, 1))
@@ -43,6 +55,7 @@ static int begin(struct od_session *s, bool compressed, bool partial, unsigned x
     s->failed = false;
     s->total = partial ? w / 8 * h * 2 : EPD_FRAME_BYTES;
     s->new_etag_valid = false;
+    s->started_at = od_millis();
     if (compressed)
         od_inflate_init(&s->inflate, s->total);
     if (partial ? epd_begin_partial(x, y, w, h) : epd_begin()) {

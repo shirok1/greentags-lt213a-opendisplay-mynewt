@@ -33,7 +33,7 @@ static struct os_callout tx_retry, idle_timeout, adv_retry;
 static struct od_session session;
 struct command {
     struct os_event work, done;
-    bool used;
+    bool used, disconnect_after;
     uint32_t generation;
     uint16_t len, mtu;
     uint8_t bytes[OD_MAX_COMMAND];
@@ -91,12 +91,23 @@ static void command_done(struct os_event *ev) {
         memset(c->bytes, 0, sizeof c->bytes);
     }
     c->used = false;
+    if (c->disconnect_after && c->generation == generation) {
+        subscribed = false;
+        ++generation; /* Discard commands queued behind the expired transfer. */
+        if (connection != BLE_HS_CONN_HANDLE_NONE &&
+            ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM))
+            os_callout_reset(&idle_timeout, OS_TICKS_PER_SEC);
+        return;
+    }
     if (!telemetry && connection == BLE_HS_CONN_HANDLE_NONE && ble_gap_adv_active()) {
         ble_gap_adv_stop();
         advertise();
     }
-    if (!telemetry && c->generation == generation && connection != BLE_HS_CONN_HANDLE_NONE)
-        os_callout_reset(&idle_timeout, 30 * OS_TICKS_PER_SEC);
+    if (!telemetry && c->generation == generation && connection != BLE_HS_CONN_HANDLE_NONE) {
+        uint32_t remaining = od_transfer_remaining_ms(&session);
+        uint32_t delay = remaining < OD_BLE_IDLE_MS ? remaining : OD_BLE_IDLE_MS;
+        os_callout_reset(&idle_timeout, os_time_ms_to_ticks32(delay) + 1);
+    }
 }
 static void command_work(struct os_event *ev) {
     struct command *c = ev->ev_arg;
@@ -107,6 +118,12 @@ static void command_work(struct os_event *ev) {
         return;
     }
     if (c->generation == generation) {
+        if (od_expire_transfer(&session)) {
+            od_store_abort();
+            od_security_reset();
+            c->disconnect_after = true;
+            goto done;
+        }
         if (c->len >= 2 && c->bytes[0] == 0 && c->bytes[1] == 0x44) {
             uint8_t sample[16];
             if (od_read_msd(sample)) {
@@ -176,6 +193,7 @@ static int access_value(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctx
         c->len = len;
         c->mtu = ble_att_mtu(conn);
         c->generation = generation;
+        c->disconnect_after = false;
         c->used = true;
         os_callout_stop(&idle_timeout);
         os_eventq_put(&display_queue, &c->work);
@@ -201,6 +219,7 @@ static void sample_telemetry(void) {
     struct command *c = &commands[0];
     c->len = c->mtu = 0;
     c->generation = generation;
+    c->disconnect_after = false;
     c->used = true;
     os_eventq_put(&display_queue, &c->work);
 }
@@ -275,7 +294,7 @@ static int gap_event(struct ble_gap_event *e, void *arg) {
             connection = e->connect.conn_handle;
             subscribed = false;
             os_callout_stop(&adv_retry);
-            os_callout_reset(&idle_timeout, 30 * OS_TICKS_PER_SEC);
+            os_callout_reset(&idle_timeout, os_time_ms_to_ticks32(OD_BLE_IDLE_MS) + 1);
         } else
             advertise();
         break;

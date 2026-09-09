@@ -9,7 +9,7 @@
 static struct {
     uint8_t key[16], id[8], challenge[16];
     uint64_t rx, tx;
-    uint32_t challenge_at, last_activity;
+    uint32_t challenge_at, authenticated_at;
     uint8_t authenticated, pending, have_rx;
 } auth;
 static uint32_t attempts_at;
@@ -118,7 +118,7 @@ static __attribute__((noinline)) void authenticate(const uint8_t *b, size_t n, u
          * this counter value. Never reuse a request nonce in a response. */
         auth.tx = UINT64_C(1) << 63;
         auth.authenticated = 1;
-        auth.last_activity = now;
+        auth.authenticated_at = now;
         mbedtls_platform_zeroize(input, sizeof input);
         mbedtls_platform_zeroize(tag, sizeof tag);
         goto done;
@@ -172,7 +172,7 @@ void od_secure_command(struct od_session *s, uint8_t *b, size_t n, const uint8_t
     const uint8_t *cfg = od_store_record(0x27);
     unsigned timeout = cfg ? (cfg[17] | cfg[18] << 8) : 0;
     if (auth.authenticated && timeout &&
-        (uint32_t)(od_millis() - auth.last_activity) / 1000 >= timeout)
+        (uint32_t)(od_millis() - auth.authenticated_at) / 1000 >= timeout)
         od_security_reset();
     int protected = od_security_enabled() && b[1] != 0x43 && b[1] != 0x44;
     if (protected && !auth.authenticated && !((b[1] == 0x41 || b[1] == 0x42) && (cfg[19] & 1))) {
@@ -202,7 +202,6 @@ void od_secure_command(struct od_session *s, uint8_t *b, size_t n, const uint8_t
             goto reject;
         auth.rx = counter;
         auth.have_rx = 1;
-        auth.last_activity = od_millis();
         n = b[18] + 2;
         memmove(b + 2, b + 19, n - 2);
         od_command(s, b, n, msd, mtu - 29, encrypted_send, &sender);

@@ -17,6 +17,8 @@ h.test_command.argtypes = [C.c_void_p, C.c_uint, C.c_uint]
 h.test_reply.argtypes = [C.c_uint, C.c_void_p]
 h.test_image.argtypes = [C.c_void_p]
 h.test_config.argtypes = [C.c_void_p]
+h.test_transfer_remaining.restype = C.c_uint
+h.test_set_time.argtypes = [C.c_uint]
 
 def command(data, mtu=247):
     n=h.test_command(data,len(data),mtu); result=[];out=C.create_string_buffer(6000)
@@ -174,6 +176,40 @@ class ProtocolTests(unittest.TestCase):
         for op in [0x51,0x73,0x75,0x77]: self.assertEqual(command(bytes([0,op])),[bytes([255,op])])
         for op in [0x52,0x53]: self.assertEqual(command(bytes([0,op])),[bytes([255,op,0,0])])
         self.assertEqual(command(b'\0\x83\0'),[b'\xff\x83\xff\x02'])
+    def test_absolute_transfer_deadline(self):
+        for mode in ['direct', 'pipe', 'partial']:
+            with self.subTest(mode=mode):
+                h.test_reset()
+                if mode == 'partial':
+                    self.full(etag=1)
+                h.test_set_time(0xffff0000)  # Deadline crosses millis wrap.
+                start = (b'\0\x70' if mode == 'direct' else
+                         b'\0\x80'+struct.pack('<BBBBHI',1,0,2,1,244,2756) if mode == 'pipe' else
+                         b'\0\x76\0'+struct.pack('>IIHHHH',1,2,0,0,8,2))
+                self.assertEqual(command(start)[0][:2],start[:2])
+                for minute in range(1,15):
+                    h.test_time(60000)
+                    self.assertEqual(command(b'\0\x43')[0][:2],b'\0\x43')
+                    self.assertEqual(h.test_transfer_remaining(),900000-minute*60000)
+                h.test_time(59999)
+                self.assertEqual(h.test_transfer_remaining(),1)
+                self.assertEqual(h.test_expire_transfer(),0)
+                refreshes=h.test_refreshes()
+                h.test_time(1)
+                # Even a new START cannot bypass expiry on the old connection.
+                self.assertEqual(command(start),[])
+                self.assertEqual(h.test_transfer_remaining(),0xffffffff)
+                self.assertEqual(h.test_refreshes(),refreshes)
+                if mode == 'partial':
+                    self.assertEqual(command(start),[b'\xff\x76\x01\0'])
+                else:
+                    self.assertEqual(command(start)[0][:2],start[:2])
+                    self.assertEqual(h.test_transfer_remaining(),900000)
+    def test_completed_transfer_has_no_deadline(self):
+        self.full(etag=1)
+        h.test_time(900000)
+        self.assertEqual(h.test_expire_transfer(),0)
+        self.assertEqual(h.test_transfer_remaining(),0xffffffff)
 
 class CryptoTests(unittest.TestCase):
     def setUp(self):
@@ -220,6 +256,25 @@ class CryptoTests(unittest.TestCase):
         self.assertEqual(command(self.envelope(0x70)),[b'\xfe\x70'])
         self.auth();h.test_reconnect()
         self.assertEqual(command(b'\0\x70'),[b'\xfe\x70'])
+    def test_session_age_is_not_extended_by_traffic(self):
+        h.test_set_time(0xfffffc00)
+        self.auth()
+        for _ in range(3):
+            h.test_time(500)
+            self.assertEqual(self.decrypt(command(self.envelope(0x40))[0])[:2],b'\0\x40')
+        h.test_time(500)
+        self.assertEqual(command(self.envelope(0x40)),[b'\xfe\x40'])
+        self.auth()
+        self.assertEqual(self.decrypt(command(self.envelope(0x40))[0])[:2],b'\0\x40')
+    def test_zero_session_timeout_does_not_expire(self):
+        data=bytearray(self.config)
+        security_start=len(data)-2-64
+        data[security_start+17:security_start+19]=b'\0\0'
+        self.auth()
+        self.assertEqual(self.decrypt(command(self.envelope(0x41,crc_config(data)))[0]),b'\0\x41')
+        self.auth()
+        h.test_time(3600000)
+        self.assertEqual(self.decrypt(command(self.envelope(0x40))[0])[:2],b'\0\x40')
     def test_expired_challenge_and_rate_limit(self):
         command(b'\0\x50\0');h.test_time(31000)
         self.assertEqual(command(b'\0\x50'+b'X'*32),[b'\0\x50\xff'])

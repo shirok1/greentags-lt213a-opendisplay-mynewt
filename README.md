@@ -92,6 +92,8 @@ Cortex-M0 的任务栈参数按 32 位字计：主任务 384 字、屏幕任务 
 ```
 
 单连接，支持 Write、Write Without Response、Notify；须先订阅通知。
+BLE 空闲 120 秒后主动断连，命令完成后重新计时；未完成图像传输从 START 起另有 15 分钟绝对期限。安全配置中的 session_timeout 按认证后的总时长计算，命令不续期（0 表示禁用认证到期）。
+
 Direct 模式逐命令等待 ACK。PIPE 模式遵守协商后的 1–2 包窗口和 SACK，不能按 32 包硬发。
 最大 ATT MTU 247，也支持 MTU 23；认证和配置写入需要更大的 MTU。
 

@@ -99,12 +99,23 @@ void test_reconnect(void) {
     od_security_reset();
 }
 void test_time(unsigned ms) { now += ms; }
+void test_set_time(unsigned ms) { now = ms; }
+unsigned test_transfer_remaining(void) { return od_transfer_remaining_ms(&session); }
+unsigned test_expire_transfer(void) {
+    if (!od_expire_transfer(&session))
+        return 0;
+    od_store_abort();
+    od_security_reset();
+    return 1;
+}
 void test_fail_flash(int n) { fail_flash = n; }
 void test_fail_refresh(int n) { refresh_error = n; }
 unsigned test_refreshes(void) { return refresh_count; }
 unsigned test_command(const uint8_t *b, unsigned n, unsigned mtu) {
     uint8_t input[244], msd[16] = {0};
     count = 0;
+    if (test_expire_transfer())
+        return 0; /* Worker drops the connection without executing this command. */
     if (n > sizeof input)
         abort();
     memcpy(input, b, n);
