@@ -78,7 +78,7 @@ BIN 烧录地址为 **0**，HEX 已含绝对地址。不要用 `newt create-imag
 静态 512 B 历史窗口，不使用解压堆分配。适配层每次耗尽输入后才归还命令缓冲，输出使用 16 B 栈缓冲。
 PIPE 保持窗口 2，当前包直接处理，只缓存一个提前到达的后续包。
 
-本次构建：应用 Flash **92,100 B**，静态 RAM **13,928 B**，中断栈 **384 B**，初始堆区 **2,072 B**。
+本次构建：应用 Flash **92,560 B**，静态 RAM **13,936 B**，中断栈 **384 B**，初始堆区 **2,064 B**。
 
 Cortex-M0 的任务栈参数按 32 位字计：主任务 384 字、屏幕任务 384 字、LL 任务 256 字。
 构建生成 `.su` 栈使用报告；认证函数单独保留栈帧，避免把 AES 认证临时内存叠加到普通加密响应路径。实机栈高水位仍需测量。
@@ -131,10 +131,36 @@ async def main():
 asyncio.run(main())
 ```
 
-固件已有与 Python `cryptography` 对照的加密测试；py-opendisplay 明文无线互通与绘制已上板验证（py-opendisplay 7.16.0，版本 SHA 差异与连接窗口限制见[实板点亮与调试记录](docs/hardware-bringup.md)），加密连接互通仍需上板确认。
+固件已有与 Python `cryptography` 对照的加密测试；py-opendisplay 明文无线互通与绘制已上板验证（py-opendisplay 7.16.0，连接窗口限制见[实板点亮与调试记录](docs/hardware-bringup.md)），加密连接互通仍需上板确认。
 配置默认不开启加密，通过标准 SecurityConfig 记录设置密钥后启用。没有密钥恢复按键，遗失密钥需 SWD 恢复配置区。
 
+## CR2450 电池报告
+
+固件通过 nRF51 内部 VDD ADC 报告供电电压，使用 OpenDisplay MSD 的标准电池字段；`00 44` 每次请求重新采样。启动后的后台采样完成后更新广播，快广播 30 秒结束时再采一次，之后未连接时每 5 分钟更新。采样在屏幕 worker 执行，广播更新不重启慢广播；已有命令占用时跳过本次周期采样。ADC 或温度采样超时保留上一份广播数据，`00 44` 返回 NACK。首次采样成功前电压字段为 0。
+
+MSD 第 14 字节保存电压低 8 位，第 15 字节 bit 0 保存高位，单位 10 mV：`volts = (msd[14] | ((msd[15] & 1) << 8)) / 100`。例如 3.00 V 编码为低字节 `0x2C`、高位 `1`；加密状态 bit 3 保留。
+
+出厂 PowerOption 标记为电池供电、lithium-primary（CR2450，非充电锂电），容量保持未知。固件发送电压，不生成未经校准的剩余百分比。已有 Flash 配置优先于出厂配置，升级不会覆盖它；主机若需要 chemistry 元数据，应在保留安全配置的前提下修改 PowerOption。
+
+测量点是 MCU VDD；调试器供电或板上压降会影响读数，不能当作独立电池端子测量。上板应断开调试器供电，用万用表对照 CR2450 端子和 VDD，验证空闲及刷新负载下的读数。参考 [Nordic nRF51 ADC](https://infocenter.nordicsemi.com/pdf/nRF51_RM_v3.0.pdf)。主机测试已覆盖 ADC 范围、编码、超时和关停，实板精度待验证。
+
 ## SWD
+
+日常刷写可使用下面任意一种方式，脚本会校验写入并复位运行，不做全片擦除，保留配置槽。脚本使用已生成的 HEX，不自动构建：
+
+```sh
+./tools/build.sh
+./tools/flash-openocd.sh     # CMSIS-DAP / OpenOCD
+# 或
+./tools/flash-probe-rs.sh    # probe-rs 自动选择唯一探头
+```
+
+两个脚本均可从任意工作目录调用，支持 `--help`。多个 probe-rs 探头时先运行 `probe-rs list`，再指定探头：
+
+```sh
+PROBE_RS_PROBE=d6e7:3507:012345ABCDEF ./tools/flash-probe-rs.sh
+```
+
 
 实板已验证：启动、BLE 同步与广播正常（快广播窗口），串口无输出（控制台为 stub，预期行为）；py-opendisplay 无线互通与绘制已打通（含压缩直写与刷新完成通知，前提与限制见调试记录）。详细刷机流程、兼容芯片调试限制与已知问题见[实板点亮与调试记录](docs/hardware-bringup.md)。
 
