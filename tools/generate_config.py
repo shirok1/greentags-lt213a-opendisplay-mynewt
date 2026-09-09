@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate the immutable OpenDisplay record from the application's GPIO config."""
 from pathlib import Path
+import binascii
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,11 +23,7 @@ def config_bytes():
     body = bytearray([0, 0, 1])
     for kind, record in [(1, system), (2, manufacturer), (4, power), (0x20, panel)]:
         body += bytes([0, kind]) + record
-    crc = 0xffff
-    for byte in body:
-        crc ^= byte << 8
-        for _ in range(8):
-            crc = ((crc << 1) ^ (0x1021 if crc & 0x8000 else 0)) & 0xffff
+    crc = binascii.crc_hqx(body, 0xffff)
     return body + crc.to_bytes(2, 'little')
 
 def render():

@@ -1,5 +1,6 @@
 """Cross-language protocol/crypto tests against real C handlers and flash model."""
 import ctypes as C
+import binascii
 import os
 import random
 import struct
@@ -26,10 +27,8 @@ def config():
     out=C.create_string_buffer(4096); n=h.test_config(out);return bytearray(out.raw[:n])
 
 def crc_config(data):
-    data=bytearray(data);c=0xffff
-    for b in b'\0\0'+data[2:-2]:
-        c ^= b<<8
-        for _ in range(8): c=((c<<1)^(0x1021 if c&0x8000 else 0))&65535
+    data=bytearray(data)
+    c=binascii.crc_hqx(b'\0\0'+data[2:-2],0xffff)
     data[-2:]=struct.pack('<H',c);return bytes(data)
 
 def cmac(key,data):
