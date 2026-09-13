@@ -81,6 +81,21 @@ static unsigned geometry(struct od_session *s, uint32_t old, unsigned x, unsigne
     }
     return 0;
 }
+static void finish(struct od_session *s, uint8_t opcode, od_send_fn send, void *arg) {
+    uint8_t r[2] = {0, opcode};
+    if (send(r, sizeof r, arg)) {
+        od_abort(s);
+        return;
+    }
+    r[1] = epd_refresh() ? 0x74 : 0x73;
+    epd_off();
+    s->active = false;
+    s->written = 0;
+    s->etag_valid = r[1] == 0x73 && s->new_etag_valid;
+    if (s->etag_valid)
+        s->etag = s->new_etag;
+    send(r, sizeof r, arg);
+}
 static int sack(struct od_session *s, od_send_fn send, void *arg, unsigned error) {
     uint8_t r[8] = {error ? 0xff : 0, 0x81};
     unsigned off = 2;
@@ -150,9 +165,16 @@ static void pipe_data(struct od_session *s, const uint8_t *b, size_t n, od_send_
         s->pending.used = false;
         ++s->next;
     }
-    if (++s->since_ack >= s->ack_every || s->written == s->total)
-        if (sack(s, send, arg, 0))
+    if (++s->since_ack >= s->ack_every || s->written == s->total) {
+        if (sack(s, send, arg, 0)) {
             od_abort(s);
+            return;
+        }
+    }
+    /* Raw full PIPE frames finish on the last DATA, as expected by the SDK.
+     * Compressed and partial streams still require an explicit END. */
+    if (!s->compressed && !s->partial && s->written == s->total && !s->pending.used)
+        finish(s, 0x82, send, arg);
     return;
 fail:
     sack(s, send, arg, error);
@@ -432,19 +454,7 @@ void od_command(struct od_session *s, const uint8_t *b, size_t len, const uint8_
             s->new_etag = be32(b + 3);
             s->new_etag_valid = true;
         }
-        r[0] = 0;
-        if (send(r, 2, arg)) {
-            od_abort(s);
-            return;
-        }
-        r[1] = epd_refresh() ? 0x74 : 0x73;
-        epd_off();
-        s->active = false;
-        s->written = 0;
-        s->etag_valid = r[1] == 0x73 && s->new_etag_valid;
-        if (s->etag_valid)
-            s->etag = s->new_etag;
-        send(r, 2, arg);
+        finish(s, b[1], send, arg);
         return;
     }
     default:

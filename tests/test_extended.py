@@ -101,14 +101,22 @@ class ProtocolTests(unittest.TestCase):
                 self.assertEqual(command(b'\0\x71x'),[b'\xff\x71'])
                 self.assertEqual(command(start),[b'\xff\x76\x01\0'])
     def pipe(self,data,zipped=False,chunk=18):
+        refreshes = h.test_refreshes()
         header=b'\0\x80'+struct.pack('<BBBBHI',1,int(zipped),2,2,244,len(data))
         ack=command(header)[0];self.assertEqual(ack[:5],b'\0\x80\x01\x02\x02')
         stream=compressed(data) if zipped else data
         pieces=[stream[i:i+chunk] for i in range(0,len(stream),chunk)]
         for i in range(0,len(pieces),2):
             indexes=[i+1,i] if i+1<len(pieces) else [i]
-            for j in indexes: command(bytes([0,0x81,j%256])+pieces[j])
-        result=command(b'\0\x82\0');self.assertEqual(result[-2:],[b'\0\x82',b'\0\x73'])
+            for j in indexes: result=command(bytes([0,0x81,j%256])+pieces[j])
+        if zipped:
+            self.assertEqual(h.test_refreshes(), refreshes)
+            result=command(b'\0\x82\0')
+        self.assertEqual(result[-2:],[b'\0\x82',b'\0\x73'])
+        self.assertEqual(h.test_refreshes(), refreshes + 1)
+        if not zipped:
+            self.assertEqual(command(b'\0\x82\0'), [b'\xff\x82'])
+            self.assertEqual(h.test_refreshes(), refreshes + 1)
         self.assertEqual(image(),data)
     def test_pipe_reorder_wrap_and_compression(self):
         self.pipe(b'\xa5'*2756,chunk=7) # >256 chunks; sequence wrap
