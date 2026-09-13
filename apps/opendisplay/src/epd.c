@@ -14,21 +14,34 @@
 #define BUSY MYNEWT_VAL(EPD_BUSY)
 #define BS MYNEWT_VAL(EPD_BS)
 
+/* Match the 100-frame phase verified on the Zephyr LT213A panel. */
+#define PARTIAL_DRIVE_FRAMES 100
+/* BUSY high permits the next operation (panel spec, update flow).
+ * Keep a small board settling margin; tune here if a panel needs longer. */
+#define READY_SETTLE_MS 10
 static unsigned partial_size, partial_offset;
 /* Rail remains connected on LT213A; only a successful sleep command is cached. */
 static int asleep;
 static void delay_ms(unsigned ms) { os_time_delay(os_time_ms_to_ticks32(ms) + 1); }
-static void byte(int data, uint8_t value) {
-    hal_gpio_write(DC, data);
-    hal_gpio_write(CS, 0);
+/* nRF51 runs at 16 MHz. RTC cputime has 30.5 us resolution, so use 16
+ * single-cycle NOPs for a >=1 us half-bit hold without masking BLE interrupts. */
+static void spi_hold(void) { __asm__ volatile(".rept 16\n nop\n .endr\n"); }
+static void shift_out(uint8_t value) {
     for (unsigned bit = 0; bit < 8; ++bit) {
         hal_gpio_write(SCK, 0);
         hal_gpio_write(MOSI, !!(value & 0x80));
-        value <<= 1;
+        spi_hold();
         hal_gpio_write(SCK, 1);
+        spi_hold();
+        value <<= 1;
     }
-    hal_gpio_write(CS, 1);
     hal_gpio_write(SCK, 0);
+}
+static void byte(int data, uint8_t value) {
+    hal_gpio_write(DC, data);
+    hal_gpio_write(CS, 0);
+    shift_out(value);
+    hal_gpio_write(CS, 1);
 }
 static void cmd(uint8_t value) { byte(0, value); }
 static void data(uint8_t value) { byte(1, value); }
@@ -37,11 +50,11 @@ static int ready(void) {
     do {
         cmd(0x71);
         if (hal_gpio_read(BUSY)) {
-            delay_ms(200);
+            delay_ms(READY_SETTLE_MS);
             return 0;
         }
         delay_ms(10);
-    } while ((os_time_t)(os_time_get() - start) < 15 * OS_TICKS_PER_SEC);
+    } while ((os_time_t)(os_time_get() - start) < 30 * OS_TICKS_PER_SEC);
     return -1;
 }
 void epd_gpio_init(void) {
@@ -66,6 +79,7 @@ int epd_begin(void) {
     data(0x17);
     data(0x17);
     cmd(0x04);
+    delay_ms(10); /* Allow BUSY to assert before polling. */
     if (ready())
         return -1;
     cmd(0x00);
@@ -78,22 +92,31 @@ int epd_begin(void) {
     cmd(0x50);
     data(0x97);
     cmd(0x10);
-    for (unsigned i = 0; i < EPD_FRAME_BYTES; ++i) {
-        data(0xff);
-        /* Let host events run during the initial old-image fill. */
-        if ((i & 127) == 127)
-            os_time_delay(1);
-    }
+    /* BLE host/controller preempt this lower-priority worker when needed. */
+    hal_gpio_write(DC, 1);
+    hal_gpio_write(CS, 0);
+    for (unsigned i = 0; i < EPD_FRAME_BYTES; ++i)
+        shift_out(0xff);
+    hal_gpio_write(CS, 1);
     cmd(0x13);
     return 0;
 }
 int epd_write(const uint8_t *buf, size_t len) {
+    if (!len)
+        return 0;
+    hal_gpio_write(DC, 1);
+    hal_gpio_write(CS, 0);
     while (len--) {
-        if (partial_size && partial_offset == partial_size)
+        if (partial_size && partial_offset == partial_size) {
+            hal_gpio_write(CS, 1);
             cmd(0x13);
-        data(partial_size ? (uint8_t)~*buf++ : *buf++);
+            hal_gpio_write(DC, 1);
+            hal_gpio_write(CS, 0);
+        }
+        shift_out(partial_size ? (uint8_t)~*buf++ : *buf++);
         ++partial_offset;
     }
+    hal_gpio_write(CS, 1);
     return 0;
 }
 int epd_refresh(void) {
@@ -109,6 +132,7 @@ int epd_off(void) {
     cmd(0x50);
     data(0xf7);
     cmd(0x02);
+    delay_ms(10);
     int rc = ready();
     if (!rc) {
         cmd(0x07);
@@ -140,6 +164,7 @@ int epd_begin_partial(unsigned x, unsigned y, unsigned width, unsigned height) {
     data(0x17);
     data(0x17);
     cmd(0x04);
+    delay_ms(10); /* Allow BUSY to assert before polling. */
     if (ready())
         return -1;
     cmd(0x00);
@@ -162,7 +187,7 @@ int epd_begin_partial(unsigned x, unsigned y, unsigned width, unsigned height) {
                                        : table == 3 ? 0x10
                                                     : 0)
                  : i == 1 || i == 5 ? 1
-                 : i == 2           ? 14
+                 : i == 2           ? PARTIAL_DRIVE_FRAMES
                                     : 0);
     }
     cmd(0x91);
