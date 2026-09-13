@@ -76,6 +76,10 @@ static int send_response(const uint8_t *data, size_t len, void *arg) {
     tx.retries = 0;
     os_eventq_put(os_eventq_dflt_get(), &tx.event);
     os_sem_pend(&tx.finished, OS_TIMEOUT_NEVER);
+    /* Multi-notification config reads can outlast one sanity interval. Only a
+     * completed successful send proves progress; never feed a stuck wait. */
+    if (!tx.result)
+        os_sanity_task_checkin(NULL);
     return tx.result;
 }
 static void command_done(struct os_event *ev) {
@@ -164,6 +168,19 @@ static void expire(struct os_event *ev) {
             os_callout_reset(&idle_timeout, OS_TICKS_PER_SEC);
     }
 }
+/* Queue boundaries and successful sends prove progress. A stuck callback or
+ * notification wait must fail sanity; idle queues check in without extra tasks. */
+static void __attribute__((noreturn)) run_events(struct os_eventq *queue) {
+    while (1) {
+        os_sanity_task_checkin(NULL);
+        struct os_event *ev = os_eventq_poll(&queue, 1, 60 * OS_TICKS_PER_SEC);
+        if (ev) {
+            os_sanity_task_checkin(NULL);
+            assert(ev->ev_cb);
+            ev->ev_cb(ev);
+        }
+    }
+}
 static void display_main(void *arg) {
     epd_gpio_init();
     /* Reset establishes a known command state without powering the booster. */
@@ -172,8 +189,7 @@ static void display_main(void *arg) {
     hal_gpio_write(MYNEWT_VAL(EPD_RESET), 1);
     os_time_delay(os_time_ms_to_ticks32(10) + 1);
     epd_off();
-    while (1)
-        os_eventq_run(&display_queue);
+    run_events(&display_queue);
 }
 static int access_value(uint16_t conn, uint16_t attr, struct ble_gatt_access_ctxt *ctxt,
                         void *arg) {
@@ -269,7 +285,7 @@ static void advertise(void) {
     p.conn_mode = BLE_GAP_CONN_MODE_UND;
     p.disc_mode = BLE_GAP_DISC_MODE_GEN;
     p.itvl_min = slow_advertising ? 1600 : 160;
-    p.itvl_max = slow_advertising ? 1920 : 240; /* fast: 100--150 ms; slow: 1--1.2 s */
+    p.itvl_max = slow_advertising ? 1600 : 240; /* fast: 100--150 ms; slow: 1 s */
     rc = ble_gap_adv_start(address_type, NULL, BLE_HS_FOREVER, &p, gap_event, NULL);
 retry:
     if (rc)
@@ -359,7 +375,7 @@ int mynewt_main(int argc, char **argv) {
         commands[i].done.ev_arg = &commands[i];
     }
     rc = os_task_init(&display_task, "epd", display_main, NULL, MYNEWT_VAL(OS_MAIN_TASK_PRIO) + 1,
-                      OS_WAIT_FOREVER, display_stack,
+                      120 * OS_TICKS_PER_SEC, display_stack,
                       sizeof display_stack / sizeof display_stack[0]);
     assert(rc == 0);
     ble_hs_cfg.sync_cb = on_sync;
@@ -368,6 +384,5 @@ int mynewt_main(int argc, char **argv) {
     assert(rc == 0);
     rc = ble_gatts_add_svcs(services);
     assert(rc == 0);
-    while (1)
-        os_eventq_run(os_eventq_dflt_get());
+    run_events(os_eventq_dflt_get());
 }

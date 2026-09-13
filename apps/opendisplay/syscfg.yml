@@ -1,4 +1,12 @@
 syscfg.vals:
+    # The idle task feeds HW WDT only after native task sanity checks pass.
+    WATCHDOG_INTERVAL: 180000
+    SANITY_INTERVAL: 15000
+    # Mynewt doubles this setting when registering the main task (120 s).
+    OS_MAIN_TASK_SANITY_ITVL_MS: 60000
+    # Keep native Cortex-M0 assert/fault handlers on their automatic reset path.
+    OS_CRASH_RESTORE_REGS: 0
+    OS_COREDUMP: 0
     MBEDTLS_CCM_C: 1
     MBEDTLS_CMAC_C: 1
     MBEDTLS_AES_ROM_TABLES: 1
