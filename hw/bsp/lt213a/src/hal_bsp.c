@@ -4,10 +4,32 @@
 #include "mcu/nrf51_hal.h"
 #include "mcu/nrf51_clock.h"
 #include "nrfx.h"
+#include "soc/nrfx_coredep.h"
 #include "hal/hal_bsp.h"
 #include "hal/hal_system.h"
 #include "hal/hal_flash.h"
 #include "bsp/bsp.h"
+/* RTC/OS time does not exist yet. Bound startup waits with the CPU delay, not
+ * os_cputime_delay_usecs(), which itself depends on the clock being started. */
+static void clock_wait(volatile const uint32_t *reg, uint32_t mask, uint32_t value) {
+    for (unsigned i = 0; i < 10000; ++i) {
+        if ((*reg & mask) == value)
+            return;
+        nrfx_coredep_delay_us(100);
+    }
+    hal_system_reset();
+}
+static void lfclk_start(void) {
+    /* A retained LFCLKSTAT=Running after SWD/software reset was insufficient
+     * on LT213A: calibration and both RTCs stalled. Establish a fresh start
+     * before any RTC or periodic calibration owns the clock. */
+    NRF_CLOCK->TASKS_LFCLKSTOP = 1;
+    clock_wait(&NRF_CLOCK->LFCLKSTAT, CLOCK_LFCLKSTAT_STATE_Msk, 0);
+    NRF_CLOCK->EVENTS_LFCLKSTARTED = 0;
+    NRF_CLOCK->LFCLKSRC = CLOCK_LFCLKSRC_SRC_RC;
+    NRF_CLOCK->TASKS_LFCLKSTART = 1;
+    clock_wait(&NRF_CLOCK->EVENTS_LFCLKSTARTED, 1, 1);
+}
 /* Shared HFXO reference counting prevents calibration from stopping the
  * crystal while NimBLE is using the radio. CTIV=8 calibrates every 2 seconds.
  * CAL and CTSTART are separated by calibration completion (> one LFCLK tick). */
@@ -45,11 +67,11 @@ static void calibration_irq(void) {
 static void calibration_init(void) {
     /* Finish first calibration before the scheduler / BLE starts. */
     nrf51_clock_hfxo_request();
-    while ((NRF_CLOCK->HFCLKSTAT & (CLOCK_HFCLKSTAT_STATE_Msk | CLOCK_HFCLKSTAT_SRC_Msk)) !=
-           (CLOCK_HFCLKSTAT_STATE_Msk | CLOCK_HFCLKSTAT_SRC_Xtal)) {}
+    clock_wait(&NRF_CLOCK->HFCLKSTAT, CLOCK_HFCLKSTAT_STATE_Msk | CLOCK_HFCLKSTAT_SRC_Msk,
+               CLOCK_HFCLKSTAT_STATE_Msk | CLOCK_HFCLKSTAT_SRC_Xtal);
     NRF_CLOCK->EVENTS_DONE = 0;
     NRF_CLOCK->TASKS_CAL = 1;
-    while (!NRF_CLOCK->EVENTS_DONE) {}
+    clock_wait(&NRF_CLOCK->EVENTS_DONE, 1, 1);
     NRF_CLOCK->EVENTS_DONE = 0;
     nrf51_clock_hfxo_release();
     NRF_CLOCK->CTIV = 8;
@@ -68,7 +90,7 @@ int hal_bsp_power_state(int state) { return 0; }
 uint32_t hal_bsp_get_nvic_priority(int irq, uint32_t pri) { return irq == RADIO_IRQn ? 0 : pri; }
 void hal_bsp_init(void) {
     int rc;
-    hal_system_clock_start();
+    lfclk_start();
     calibration_init();
     rc = hal_timer_init(3, NULL); assert(rc == 0);
     rc = os_cputime_init(MYNEWT_VAL(OS_CPUTIME_FREQ)); assert(rc == 0);
