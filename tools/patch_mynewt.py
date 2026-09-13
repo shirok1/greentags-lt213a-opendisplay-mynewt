@@ -1,6 +1,15 @@
 """Board-specific patches applied to downloaded Mynewt dependencies."""
 from pathlib import Path
 
+# Keep upstream profiles intact and select global -O2 for this board.
+p = Path('repos/apache-mynewt-core/compiler/arm-none-eabi-m0/compiler.yml')
+s = p.read_text()
+profile = 'compiler.flags.lt213a_o2: [compiler.flags.default, -O2, -ggdb]'
+if profile not in s:
+    if 'compiler.flags.lt213a_o2:' in s or 'compiler.flags.default:' not in s:
+        raise SystemExit('Unexpected Mynewt compiler profile; review patch before building')
+    p.write_text(s + '\n' + profile + '\n')
+
 # Allow calibrated LFRC only on the BSP that provides its calibration driver.
 p = Path('repos/apache-mynewt-core/hw/mcu/nordic/nrf51xxx/syscfg.yml')
 s = p.read_text()

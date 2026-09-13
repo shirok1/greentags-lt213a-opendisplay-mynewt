@@ -25,7 +25,9 @@ syscfg.vals:
     BLE_STORE_MAX_CCCDS: 0
     BLE_ATT_PREFERRED_MTU: 247
     BLE_L2CAP_COC_MAX_NUM: 0
-    BLE_GATT_MAX_PROCS: 1
+    # Static GATT server using notifications; no client procedures or indications.
+    BLE_GATT_INDICATE: 0
+    BLE_GATT_MAX_PROCS: 0
     BLE_ATT_SVR_MAX_PREP_ENTRIES: 0
     BLE_TRANSPORT_ACL_SIZE: 27
     BLE_TRANSPORT_ACL_COUNT: 4
